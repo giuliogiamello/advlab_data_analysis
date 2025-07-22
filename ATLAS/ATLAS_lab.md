@@ -1,7 +1,3 @@
----
-modified: 2025/07/22 - 01:04
-created: 2025/07/16 - 09:38
----
 # ATLAS_lab
 
 [[detlab_dortmund]]
@@ -20,7 +16,6 @@ created: 2025/07/16 - 09:38
 #### Currently running
 
 - I'm running the terminal `2224961.pts-5.nashira` to plot the efficiencies
-- I'm running the terminal `3183942.pts-1.nashira` to plot the efficiencies
 
 (The `.exe` files are created by running `make` inside `/nfs/homes/zprime/zprime12/Code`. To clean up the folder from previously compiled files use `make clean`. The compilation options are defined inside the `Makefile` file).
 
@@ -59,7 +54,7 @@ root -l -q plotEfficiencies.C
 
 (This command should be executed only after performing the run the selection over real/MC files)
 
-#### run the selection over real/MC files 
+#### run the selection over real/MC files
 
 I wrote the script `script.sh`
 
@@ -75,6 +70,101 @@ with which to go and run `runSelection.exe` on all the files contained in `/ceph
 This is to be run from inside the `/nfs/homes/zprime/zprime12/Code` folder.
 
 It returns as output: a `.txt` file, containing the values of all efficiencies, for each `.root` file processed and an `eff_summary.txt` file containing the global efficiency of all `.root` files. The latter file is what is used by `plotEfficiencies.C` to create the histogram of the efficiencies.
+
+##### Chosen cuts
+
+```
+// Cut-flow counters
+  const int nSteps = 8;
+  vector<Long64_t> nPass(nSteps, 0);
+  vector<string> stepLabels = {
+      "Total events",
+      "Exactly 1 lepton",
+      "Lepton pT > 50 GeV",
+      "Lepton |η| < 2.5",
+      "Jet multiplicity: 3-5 jets",
+      "≥1 jet with pT ≥ 90 GeV",
+      "≥1 b-tagged jet (70% WP)",
+      "MET > 40 GeV"
+  };
+
+  // Pre-calculate constants
+  const double minLepPt = 50000;
+  const double minJetPt = 90000;
+  const double minMET = 40000;
+
+  // Counter for events passing ALL cuts
+  Long64_t nPassedAll = 0;
+
+  // Event processing
+  for (Long64_t iEntry = 0; iEntry < nEntries; ++iEntry) {
+      tree->GetEntry(iEntry);
+      if ((iEntry+1) % 10000000 == 0) {
+          cout << "Processing event " << iEntry+1 << "/" << nEntries << endl;
+      }
+
+      nPass[0]++; // Step 0: Total events
+
+      // Step 1: Exactly one lepton
+      if (tree->lep_n != 1) continue;
+      nPass[1]++;
+
+      // Create lepton four-vector
+      TLorentzVector lep;
+      lep.SetPtEtaPhiE(
+          tree->lep_pt->at(0),
+          tree->lep_eta->at(0),
+          tree->lep_phi->at(0),
+          tree->lep_E->at(0)
+      );
+
+      // Step 2: Lepton pT > 50 GeV
+      if (lep.Pt() < minLepPt) continue;
+      nPass[2]++;
+
+      // Step 3: Lepton |η| < 2.5
+      if (fabs(lep.Eta()) >= 2.5) continue;
+      nPass[3]++;
+
+      // Step 4: Jet multiplicity (3-5 jets)
+      if (tree->jet_n < 3 || tree->jet_n > 5) continue;
+      nPass[4]++;
+
+      // Step 5: ≥1 jet with pT ≥ 90 GeV
+      bool highPtJetFound = false;
+      for (UInt_t i = 0; i < tree->jet_n; ++i) {
+          if (tree->jet_pt->at(i) >= minJetPt) {
+              highPtJetFound = true;
+              break;
+          }
+      }
+      if (!highPtJetFound) continue;
+      nPass[5]++;
+
+      // Step 6: ≥1 b-tagged jet (70% WP)
+      bool bTagFound = false;
+      for (UInt_t i = 0; i < tree->jet_n; ++i) {
+          if (tree->jet_MV2c10->at(i) > 0.83) {
+              bTagFound = true;
+              break;
+          }
+      }
+      if (!bTagFound) continue;
+      nPass[6]++;
+
+      // Step 7: MET > 40 GeV
+      if (tree->met_et <= minMET) continue;
+      nPass[7]++;
+      
+      // Event passed ALL cuts
+      nPassedAll++;
+      newTree->Fill();
+  }
+```
+
+#### 2025/07/22
+
+The run selection over real/MC files has been completed and the overall efficiency histogram has been plotted with (`plotEfficiencies`), so we can now proceed with `4 Plot several fundamental distributions`.
 
 #### Original bare file structure
 
@@ -108,3 +198,4 @@ The initial file list, bare structure, of `/nfs/homes/zprime/zprime12` was
 ```
 
 The `.exe` files are created by running `make` inside `/nfs/homes/zprime/zprime12/Code`. To clean up the folder from previously compiled files use `make clean`. The compilation options are defined inside the `Makefile` file.
+
